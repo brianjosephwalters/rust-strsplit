@@ -6,8 +6,8 @@ pub struct StrSplit<'a> {
     delimiter: &'a str,
 }
 
-impl StrSplit<'_> {
-    pub fn new(haystack: &str, delimiter: &str) -> Self {
+impl<'a> StrSplit<'a> {
+    pub fn new(haystack: &'a str, delimiter: &'a str) -> Self {
         Self {
             remainder: haystack,
             delimiter, // don't need field:value because same name
@@ -31,7 +31,7 @@ impl<'a> Iterator for StrSplit<'a> {
         // remainder is not empty -> remainder
         else {
             let rest = self.remainder;
-            self.remainder = &[];
+            self.remainder = "";
             Some(rest)
         }
     }
@@ -40,6 +40,6 @@ impl<'a> Iterator for StrSplit<'a> {
 #[test]
 fn it_works() {
     let haystack = "a b c d e";
-    for leter in StrSplit::new(haystack, " ");
-    assert_eq!(letters, vec!["a", "b", "c", "d", "e"].into_iter());
+    let letters = StrSplit::new(haystack, " ");
+    assert!(letters.eq(vec!["a", "b", "c", "d", "e"].into_iter()));
 }
