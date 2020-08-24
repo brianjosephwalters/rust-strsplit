@@ -1,6 +1,10 @@
-### [Crust of Rust: Lifetime Annotations]()
-Following along with discussion of how Rust Lifetimes work.
+### [Crust of Rust: Lifetime Annotations](https://youtu.be/rAl-9HwD858)
+Following along with discussion of how Rust lifetimes work.  From Jon Gjengset
 
+__Goal:__
+Learn how Rust lifetimes work.  Understand why we don't make them explicit very often.  Get an idea as to the use cases for them.  Grapple with multiple lifetimes.
+
+__Program Summary:__
 Creating a object that splits a string based on a delimiter and allows you to iterate over that original string, returning everything up to the next delimiter.
 
 ### Commit 1
@@ -233,5 +237,91 @@ Now we can use them by tying the value that the Iterator needs to store to the o
 
 The compiler is happy because the code we wrote was following that contract already.  We were already assuming this lifetime relationship when we wrote the code.  We just needed to figure out our contracts.
 
+### Commit 7 - Cleaning up lifetimes
 
+We can use `_` because the impl for the Iterator doesn't care what the second lifetime is.
+
+
+### Commit 8 - A More Generic Function
+Instead of the delimitering being a str, can it be anything that can find itself in a str?
+
+*  Make the class generic over the D type.
+```rust
+pub struct StrSplit<'haystack, D> {
+    remainder: Option<&'haystack str>,
+    delimiter: D,
+}
+```
+    - D is a type, not a lifetime.
+
+For the Iterator impl, what are the requirements of D?
+-  What are the bounds of where the delimiter appears in str?
+
+1.  Create a trait that defines the function that are necessary to do the work of the delimiter.
+2.  Ensure that D implements the Delimiter trait for our Interator impl.
+3.  Rewrite Iterator in terms of D.  This allows us to clean up our code a bit, passing off the work to the find_next function and returning clearer variables. 
+```rust
+if let Some((delim_start, delim_end)) = self.delimiter.find_next(&remainder) {
+    let until_delimiter = &remainder[..delim_start];
+    *remainder = &remainder[delim_end..];
+    Some(until_delimiter)
+}
+```
+4.  With a **trait**, we then need to implement it for the types it supports.
+For str: 
+```rust
+impl Delimiter for &str {
+    fn find_next(&self, s: &str) -> Option<(usize, usize)> {
+        s.find(self).map(|start| (start, start + self.len()))
+    }
+}
+```
+We search for the delimiter (self) in s, and then we need to return a pair with the start and end. Note that we are adding the length of the delimiter to the starting index.
+
+For char:
+```rust
+impl Delimiter for char {
+    fn find_next(&self, s: &str) -> Option<(usize, usize)> {
+        s.char_indices()
+            .find(|(_, c)| c == self)
+            .map(|(start, _)| (start, start + self.len_utf8()))
+    }
+}
+```
+5.  Now, when we use our class in the context of a char, we won't need to allocate a str.  We can just pass a char along.
+Before:
+```rust 
+pub fn until_char(s: &str, c:char) -> &'_ str {
+    let delim = format!("{}", c);
+    StrSplit::new(s, &*delim)
+        .next()
+        .expect("StrSplit always gives at least one result.")
+}
+```
+
+After:
+```rust
+pub fn until_char(s: &str, c:char) -> &'_ str {
+    StrSplit::new(s, c)
+        .next()
+        .expect("StrSplit always gives at least one result.")
+}
+```
+
+__What is type is &self in the trait?__
+```rust
+impl Delimiter for &str {
+    fn find_next(&self, s: &str) -> Option<(usize, usize)> {
+```
+In this case, it is a reference to a reference to a str.
+
+__What is `s.find(self)` doing?__
+Giving find a str, it tells you where the start of the str is. So it's a good way to find the start index of a substring.
+
+
+
+### Take Aways
+If you look at str in the standard library, you'll find the split() function.  Everything implemented exists on the standard library!  (Their Pattern trait is a bit more convoluted than our Delimiter trait.)
+
+* In the standard library, they actually tie the Pattern's lifetime to the lifetime of the string being search on.  More convoluted so they can write more effecient implementations.
 
