@@ -171,5 +171,67 @@ Therefore, when we modify it on the next line, we are actualy modifying our copy
 `as_mut()` is a function on Option<T> that takes a mutable reference to self and returns an option that contains a mutable reference to self.
     *  `impl<T> Option<T> { fn as_mut(&mut self) -> Option<&mut T> }`
 
+### Commit 6 - Multiple Lifetimes
+Imagine you wanted to write a function that is takes a string and a character and give you back a string until the first occurance of that character.
+
+We hoped we could do this:
+```rust
+fn until_char(s: &str, c: char) -> &str {
+    StrSplit::new(s, &format!("{}", c))
+        .next()
+        .expect("StrSplit always gives at least one result.")
+}
+```
+
+```rust
+#[test]
+fn until_char_test() {
+    assert_eq!(until_char("hello world!", 'o'), "hell");
+}
+
+```
+But we get the error `Cannot return value referencing temporary value. Returns a value referencing data owned by the current function.`.
+The `&str` that we are returning is tied to the lifetime of the `&format("{}", c)`.  But that's crazy because we know that StrSplit only ever returns substrings of the first argument, never references into the second string.  The lifetime of the second string doesn't matter for the purposes of what StrSplit returns.
+
+But this makes sense for Rust.  We only created one lifetime, both input variables have that lifetime, and the thing we return has that lifetime.  So when pass to StrSplit two elements that actually have different lifetimes (because the `&format!()` parameter doesn't live in the calling function itself), Rust takes the longer lifetime and turn it into the shorter lifetime.  So when we try to return the string from `until_char()`, we are breaking the contract.  `until_char()` is really `fn until_char<'a>9s: &'a str, c: char) -> &'a str`.  And the returned `'a` is not the same as the input string's `'a`.
+
+__So how do we tell Rust this is okay?__
+    *  Use *copy* for the variables you will just throw away anyhow.
+    *  Use two lifetimes.
+
+1.  One option is to *copy* the delimiter into our function by storing it as a `String`.
+*  `String` does not have a lifetime associated with it, unlike `str`.  `str` is closer to `[char]`.
+    *  But `&str` is a fat pointer, not a shallow pointer.  **fat pointers** store a pointer to the start of the string and the length of the string.  References to a slice are the same `&[char]`.
+*  `String` is more equivalent to `Vec<char>`.  
+    *  String is heap allocated.
+    *  Dynamically expandable and retractable.
+
+With a `String`, you can get a reference to a `str` because a String obviously knows where a str starts and how long it is.  Uses AsRef.
+With `&str`, you don't know where the reference is point.  So you have do a head allocation and copy all of the characters over.  Then you have a String.  Uses memcpy.
+
+So now we would require an allocation.  Not great for performance.  
+Now we need to have an allocator.  This library would no longer be compatible with embedded devices that don't have allocators.
+
+2.  The other option is to have multiple lifetimes.
+Usually you do not need multiple lifetimes, and it is quite rare.  It tends to come up when you need to store multiple references and it is important they are not the same.  You want to return one without tying it to the other.
+
+*  Change all definitions to use two lifetimes:
+```rust
+pub struct StrSplit<'a> {
+
+```
+becomes
+```rust
+pub struct StrSplit<'haystack, 'delimiter> {
+```
+etc.  
+
+Now we can use them by tying the value that the Iterator needs to store to the one lifetime, but not the other:
+```rust 
+    type Item = &'haystack str;
+``` 
+
+The compiler is happy because the code we wrote was following that contract already.  We were already assuming this lifetime relationship when we wrote the code.  We just needed to figure out our contracts.
+
 
 
