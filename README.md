@@ -134,3 +134,42 @@ __What is take() doing?__
 It is implemented on `Option<T>`.  `take()` takes a mutable reference to the option and gives you back an Option<T>.  If the Option is None, then it returns None.  If the Option is Some then it sets the Option to None and returns the Some that was in there.
 *  `impl<T> Option<T> {fn take(&mut self) -> Option<T>}`
 *  We only want to return "the remainder that doesn't have a delimiter" once.  That's what this will allow us to do.
+
+### Commit 5 - Simplification
+The `?` try operator also works on Options.
+
+Every `let` statement is a pattern match.  I want to pattern match on what was inside the Some() of self.remainder in order to take a reference to what was in there:
+```rust
+if let Some(ref mut remainder) = self.remainder {
+    ...
+}
+else {
+    None
+}
+```
+is equivalent to:
+```rust
+let ref mut remainder = self.remainder?;
+```
+You could also write the latter as:
+```rust
+let remainder = &mut self.remainder?;
+```
+They are sort of inverses of each other.  **The Two Above are not Quite Right.** Fixed below.
+
+__If self is mutable, why isn't self.remainder not mutable by default?__
+Mutable references are only one level deep.  A mut to self `fn next(&mut self)` means you can modify any fields of Self (remainder, delimiter).  But delimiter is an *immutable* pointer to some string.  You can make delimiter point somewhere else, but not change the thing that delimiter is pointing to.  For the latter case, delimiter itself would have to be a mutable reference.
+
+__Why change `self.remainder?` to `self.remainder.as_mut()?` ?__
+`let remainder = self.remainder?;`: 
+    *  if self.remainder is None, then it returns None
+    *  otherwise it returns the value inside the Some().  
+Normally that would move the T that's inside the Some().  But because the T inside the Some() is "copy" (i.e., `&'a str`), we get **copy** semantics instead of **move** semantics.  Which means it copies the reference outside the option.  This means the remainder is no longer the same remainder as the one defined by the struct.
+
+Therefore, when we modify it on the next line, we are actualy modifying our copy of that pointer, not the pointer stored inside self.
+
+`as_mut()` is a function on Option<T> that takes a mutable reference to self and returns an option that contains a mutable reference to self.
+    *  `impl<T> Option<T> { fn as_mut(&mut self) -> Option<&mut T> }`
+
+
+
